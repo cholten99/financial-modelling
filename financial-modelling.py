@@ -7,24 +7,19 @@ from oauth2client.service_account import ServiceAccountCredentials
 # All the functions to handle the columns
 
 # Years
-def Year_func():
+def years_func(model_worksheet, model_sheet_row, model_sheet_column):
   global global_vars
-  if global_vars["state"] == "initialising":
-    global_vars["num_years"] = int(raw_input("How many years to run model: "))
-  else:
-    if global_vars["row"] <= global_vars["num_years"] + 1:
-      global_vars["worksheet"].update_cell(global_vars["row"], global_vars["column"], global_vars["row"] + 2015)
-    else:
-      print "End of modelling"
-      sys.exit(0)
+  model_worksheet.update_cell(model_sheet_row, model_sheet_column, model_sheet_row + 2015)
+
+# Dave's wage income
+def dave_wage_func(model_worksheet, model_sheet_row, model_sheet_column):
+  pass
+
+# Annie's wage income
+def annie_wage_func(model_worksheet, model_sheet_row, model_sheet_column):
+  pass
 
 # Main
-
-# Initialise a bunch of stuff 
-global_vars = {}
-columns = ["Year"]
-global_vars["row"] = 2
-global_vars["column"] = 1
 
 # Authorisation
 scope = ['https://spreadsheets.google.com/feeds']
@@ -35,52 +30,64 @@ handle = gspread.authorize(credentials)
 spreadsheet_url = "https://docs.google.com/spreadsheets/d/1rYsk3jbgctCa2boMILreW3f1a08fR6iHG4IuSc2cdCg/edit#gid=0"
 spreadsheet = handle.open_by_url(spreadsheet_url)
 
-# Ask for worksheet name
-worksheet_name = raw_input("What is the name of the worksheet: ")
+# Initialise
+global_vars = {}
+data_worksheet = spreadsheet.worksheet("Data_for_models")
 
-# If worksheet doesn't exist create it, if it does ask whether to overwrite or exit
-worksheet_list = spreadsheet.worksheets()
-already_exists =  (worksheet_name in (node.title for node in worksheet_list))
-if not already_exists:
-  print "Creating new worksheet called " + worksheet_name
-  spreadsheet.add_worksheet(worksheet_name, 70, 26)
-else:
-  overwrite_existing_worksheet = raw_input("A worksheet called " + worksheet_name + " already exists. To overwrite type 'yes': ")
-  if overwrite_existing_worksheet == "yes":
-    print "Clearing worksheet " + worksheet_name
-    spreadsheet.worksheet(worksheet_name).clear() 
-  else:
-    print "Not overwriting worksheet " + worksheet_name + " - exiting"
-    sys.exit(0)
-global_vars["worksheet"] = spreadsheet.worksheet(worksheet_name)
-
-# Ask initial questions
-global_vars["state"] = "initialising"
-for column in columns:
-  globals()[column + "_func"]()
-
-# Print column headers
-col_count = 1
-for column in columns:
-   global_vars["worksheet"].update_cell(1, col_count, column)
-   col_count += 1
-
-# Create all the rows
-global_vars["state"] = "processing"
+# Create the list of columns
+column_list = []
+column_row = 2
 while True:
-  for column in columns:
-    globals()[column + "_func"]()
-    global_vars["column"] += 1
-  global_vars["column"] = 1
-  global_vars["row"] += 1
+  variable_name = data_worksheet.cell(column_row, 1).value
+  if variable_name != "": 
+    if data_worksheet.cell(column_row, 2).value == "yes":
+      column_list.append(variable_name)
+  else:
+    break
+  column_row += 1
 
+# Set up the global data dictionary and the model worksheets
+data_sheet_column = 3
+worksheet_list = spreadsheet.worksheets()
+while True:
+  model_name = data_worksheet.cell(1, data_sheet_column).value
+  if model_name != "":
+    print "Setting up worksheet for model: " + model_name
+    already_exists =  (model_name in (node.title for node in worksheet_list))
+    if already_exists:
+      spreadsheet.worksheet(model_name).clear()
+    else:
+      spreadsheet.add_worksheet(model_name, 70, 26)
+    model_worksheet = spreadsheet.worksheet(model_name)
 
-""""""""""""""
+    # Create the dict of variables for this model in the global dict and add column headings 
+    model_dict = {}
+    column_heading_column = 1
+    data_sheet_row = 2
+    while True:
+      variable_name = data_worksheet.cell(data_sheet_row, 1).value
+      if variable_name != "":
+        model_dict[variable_name] = data_worksheet.cell(data_sheet_row, data_sheet_column).value
+        if data_worksheet.cell(data_sheet_row, 2).value == "yes":
+          model_worksheet.update_cell(1, column_heading_column, variable_name)
+          column_heading_column += 1 
+        data_sheet_row += 1
+      else:
+        global_vars[model_name] = model_dict
+        break;
 
-TBD
----
+    # Process the model
+    print "Processing the model: " + model_name
+    model_number_years = global_vars[model_name]["years"]
+    for model_sheet_row in range(2, int(model_number_years) + 1):
+      model_sheet_column = 1
+      for column_name in column_list:
+        globals()[column_name + "_func"](model_worksheet, model_sheet_row, model_sheet_column)
+        model_sheet_column += 1
 
-Create a new worksheet which lists all the selected values used - another use of the functions
+    data_sheet_column += 1
+  else:
+    break 
 
-
-"""""""""""""
+# It's all over
+print "End of modelling"
